@@ -134,11 +134,6 @@ export default function PublicProfilePage() {
 
         if (data?.profile) {
           setProfile(data.profile);
-
-          // Portfolio filename/size currently live only in this
-          // browser's localStorage, not on the server, so this will
-          // be null on any other browser/device even when
-          // profile.portfolio itself loaded correctly.
           setPortfolioMeta(getPortfolioMeta());
         }
       } catch (error) {
@@ -472,7 +467,7 @@ export default function PublicProfilePage() {
             {filledSocials.length > 0 && (
               <div className="mt-7 flex items-center justify-center flex-wrap gap-3">
                 {filledSocials.map((s) => (
-                  
+                  <a
                     key={s.key}
                     href={withProtocol(
                       profile[s.key] as string
@@ -566,7 +561,7 @@ export default function PublicProfilePage() {
                       </p>
                     </div>
 
-                    
+                    <a
                       href={profile.portfolio}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -575,7 +570,7 @@ export default function PublicProfilePage() {
                       Preview
                     </a>
 
-                    
+                    <a
                       href={profile.portfolio}
                       download={
                         portfolioMeta.name
