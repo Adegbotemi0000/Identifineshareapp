@@ -34,7 +34,6 @@ import {
   WhatsAppIcon,
 } from "@/components/ui/social-icons";
 import {
-  getProfile,
   getPortfolioMeta,
   type Profile,
 } from "@/lib/storage";
@@ -115,17 +114,45 @@ export default function PublicProfilePage() {
       return;
     }
 
-    const stored = getProfile();
+    let cancelled = false;
 
-    if (
-      stored &&
-      stored.username.toLowerCase() === username
-    ) {
-      setProfile(stored);
-      setPortfolioMeta(getPortfolioMeta());
+    async function loadProfile() {
+      try {
+        const response = await fetch(
+          `/api/profiles?username=${encodeURIComponent(username)}`,
+          { cache: "no-store" }
+        );
+
+        if (!response.ok) {
+          if (!cancelled) setReady(true);
+          return;
+        }
+
+        const data = await response.json();
+
+        if (cancelled) return;
+
+        if (data?.profile) {
+          setProfile(data.profile);
+
+          // Portfolio filename/size currently live only in this
+          // browser's localStorage, not on the server, so this will
+          // be null on any other browser/device even when
+          // profile.portfolio itself loaded correctly.
+          setPortfolioMeta(getPortfolioMeta());
+        }
+      } catch (error) {
+        console.error("Failed to load profile:", error);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     }
 
-    setReady(true);
+    loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
   }, [params.username]);
 
   async function handleShare() {
@@ -190,8 +217,7 @@ export default function PublicProfilePage() {
         <div className="px-8 py-10 h-full flex flex-col items-center justify-center text-center gap-4">
           <p className="text-sm text-ink-soft">
             This profile isn&apos;t available. It may not exist,
-            or it belongs to a different browser session in this
-            prototype.
+            or there was a problem loading it.
           </p>
 
           <Link
@@ -446,7 +472,7 @@ export default function PublicProfilePage() {
             {filledSocials.length > 0 && (
               <div className="mt-7 flex items-center justify-center flex-wrap gap-3">
                 {filledSocials.map((s) => (
-                  <a
+                  
                     key={s.key}
                     href={withProtocol(
                       profile[s.key] as string
@@ -540,7 +566,7 @@ export default function PublicProfilePage() {
                       </p>
                     </div>
 
-                    <a
+                    
                       href={profile.portfolio}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -549,7 +575,7 @@ export default function PublicProfilePage() {
                       Preview
                     </a>
 
-                    <a
+                    
                       href={profile.portfolio}
                       download={
                         portfolioMeta.name

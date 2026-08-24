@@ -26,7 +26,13 @@ import {
   type Profile,
 } from "@/lib/storage";
 
-const STEPS = ["Basic Info", "Contact", "Links & Socials", "Visual", "Assets"];
+const STEPS = [
+  "Basic Info",
+  "Contact",
+  "Links & Socials",
+  "Visual",
+  "Assets",
+];
 
 const BACKGROUND_PRESETS = [
   "#fefdfb",
@@ -44,15 +50,22 @@ interface BasicInfoErrors {
 
 export default function ProfileSetupPage() {
   const router = useRouter();
+
   const [ready, setReady] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [basicErrors, setBasicErrors] = useState<BasicInfoErrors>({});
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [basicErrors, setBasicErrors] =
+    useState<BasicInfoErrors>({});
+  const [saveError, setSaveError] = useState<string | null>(
+    null
+  );
+  const [saving, setSaving] = useState(false);
 
-  const [portfolioFileName, setPortfolioFileName] = useState("");
-  const [portfolioFileSize, setPortfolioFileSize] = useState(0);
+  const [portfolioFileName, setPortfolioFileName] =
+    useState("");
+  const [portfolioFileSize, setPortfolioFileSize] =
+    useState(0);
 
   useEffect(() => {
     const pending = getPendingSignup();
@@ -75,7 +88,14 @@ export default function ProfileSetupPage() {
 
     const existing = getProfile();
 
-    setProfile(existing ? { ...base, ...existing } : base);
+    setProfile(
+      existing
+        ? {
+            ...base,
+            ...existing,
+          }
+        : base
+    );
 
     const portfolioMeta = getPortfolioMeta();
 
@@ -87,8 +107,18 @@ export default function ProfileSetupPage() {
     setReady(true);
   }, []);
 
-  function update<K extends keyof Profile>(key: K, value: Profile[K]) {
-    setProfile((prev) => (prev ? { ...prev, [key]: value } : prev));
+  function update<K extends keyof Profile>(
+    key: K,
+    value: Profile[K]
+  ) {
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            [key]: value,
+          }
+        : prev
+    );
   }
 
   function validateBasicInfo(): boolean {
@@ -109,45 +139,84 @@ export default function ProfileSetupPage() {
     return Object.keys(next).length === 0;
   }
 
-  function persistAndAdvance() {
-    if (!profile) return;
+  async function persistAndAdvance() {
+    if (!profile || saving) return;
 
-    if (stepIndex === 0 && !validateBasicInfo()) {
+    if (
+      stepIndex === 0 &&
+      !validateBasicInfo()
+    ) {
       return;
     }
 
-    const saved = saveProfile(profile);
-
-    if (!saved) {
-      setSaveError(
-        "Couldn't save your changes — your images or portfolio are likely too large for this prototype's storage. Try removing the portfolio, or removing/replacing a large image, then continue."
-      );
-      return;
-    }
-
+    setSaving(true);
     setSaveError(null);
 
-    if (stepIndex < STEPS.length - 1) {
-      setStepIndex((i) => i + 1);
-      return;
+    try {
+      const response = await fetch("/api/profiles", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+      });
+
+      const result = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            "Failed to save profile."
+        );
+      }
+
+      saveProfile(profile);
+
+      if (stepIndex < STEPS.length - 1) {
+        setStepIndex((i) => i + 1);
+        return;
+      }
+
+      saveWorkImagesCache(profile.workImages);
+
+      if (
+        profile.portfolio &&
+        portfolioFileName
+      ) {
+        savePortfolioMeta(
+          portfolioFileName,
+          portfolioFileSize
+        );
+      }
+
+      markProfileCompleted();
+
+      router.push(
+        `/profile/${profile.username}`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save profile:",
+        error
+      );
+
+      setSaveError(
+        "Couldn't save your profile. Please try again."
+      );
+    } finally {
+      setSaving(false);
     }
-
-    saveWorkImagesCache(profile.workImages);
-
-    if (profile.portfolio && portfolioFileName) {
-      savePortfolioMeta(portfolioFileName, portfolioFileSize);
-    }
-
-    markProfileCompleted();
-
-    router.push("/dashboard");
   }
 
   if (!ready) {
     return (
       <PhoneViewport>
         <div className="h-full flex items-center justify-center">
-          <p className="text-sm text-ink-soft">Loading...</p>
+          <p className="text-sm text-ink-soft">
+            Loading...
+          </p>
         </div>
       </PhoneViewport>
     );
@@ -158,7 +227,8 @@ export default function ProfileSetupPage() {
       <PhoneViewport>
         <div className="px-8 py-10 h-full flex flex-col items-center justify-center text-center gap-4">
           <p className="text-sm text-ink-soft">
-            Please complete sign up and choose a username first.
+            Please complete sign up and choose a
+            username first.
           </p>
 
           <Link
@@ -198,7 +268,12 @@ export default function ProfileSetupPage() {
                   label="Prefix"
                   name="prefix"
                   value={profile.prefix}
-                  onChange={(e) => update("prefix", e.target.value)}
+                  onChange={(e) =>
+                    update(
+                      "prefix",
+                      e.target.value
+                    )
+                  }
                   placeholder="Dr."
                   className="col-span-1"
                 />
@@ -207,7 +282,12 @@ export default function ProfileSetupPage() {
                   label="Suffix"
                   name="suffix"
                   value={profile.suffix}
-                  onChange={(e) => update("suffix", e.target.value)}
+                  onChange={(e) =>
+                    update(
+                      "suffix",
+                      e.target.value
+                    )
+                  }
                   placeholder="MBA"
                   className="col-span-2"
                 />
@@ -217,7 +297,12 @@ export default function ProfileSetupPage() {
                 label="First name *"
                 name="firstName"
                 value={profile.firstName}
-                onChange={(e) => update("firstName", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "firstName",
+                    e.target.value
+                  )
+                }
                 error={basicErrors.firstName}
                 placeholder="Amara"
                 className="text-base py-4"
@@ -227,7 +312,12 @@ export default function ProfileSetupPage() {
                 label="Last name *"
                 name="lastName"
                 value={profile.lastName}
-                onChange={(e) => update("lastName", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "lastName",
+                    e.target.value
+                  )
+                }
                 error={basicErrors.lastName}
                 placeholder="Kofi"
                 className="text-base py-4"
@@ -237,7 +327,12 @@ export default function ProfileSetupPage() {
                 label="Professional title"
                 name="title"
                 value={profile.title}
-                onChange={(e) => update("title", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "title",
+                    e.target.value
+                  )
+                }
                 placeholder="Creative Director"
               />
 
@@ -245,7 +340,12 @@ export default function ProfileSetupPage() {
                 label="Company / organisation"
                 name="company"
                 value={profile.company}
-                onChange={(e) => update("company", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "company",
+                    e.target.value
+                  )
+                }
                 placeholder="Acme Inc."
               />
 
@@ -253,7 +353,12 @@ export default function ProfileSetupPage() {
                 label="Biography"
                 name="bio"
                 value={profile.bio}
-                onChange={(e) => update("bio", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "bio",
+                    e.target.value
+                  )
+                }
                 placeholder="A short introduction visitors will see on your public profile."
               />
             </div>
@@ -266,7 +371,12 @@ export default function ProfileSetupPage() {
                 type="email"
                 name="personalEmail"
                 value={profile.personalEmail}
-                onChange={(e) => update("personalEmail", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "personalEmail",
+                    e.target.value
+                  )
+                }
                 placeholder="you@example.com"
               />
 
@@ -275,7 +385,12 @@ export default function ProfileSetupPage() {
                 type="email"
                 name="officialEmail"
                 value={profile.officialEmail}
-                onChange={(e) => update("officialEmail", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "officialEmail",
+                    e.target.value
+                  )
+                }
                 placeholder="you@company.com"
               />
 
@@ -284,7 +399,12 @@ export default function ProfileSetupPage() {
                 type="tel"
                 name="personalPhone"
                 value={profile.personalPhone}
-                onChange={(e) => update("personalPhone", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "personalPhone",
+                    e.target.value
+                  )
+                }
                 placeholder="+234 800 000 0000"
               />
 
@@ -293,7 +413,12 @@ export default function ProfileSetupPage() {
                 type="tel"
                 name="officialPhone"
                 value={profile.officialPhone}
-                onChange={(e) => update("officialPhone", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "officialPhone",
+                    e.target.value
+                  )
+                }
                 placeholder="+234 800 000 0001"
               />
 
@@ -301,7 +426,12 @@ export default function ProfileSetupPage() {
                 label="Address"
                 name="address"
                 value={profile.address}
-                onChange={(e) => update("address", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "address",
+                    e.target.value
+                  )
+                }
                 placeholder="City, Country"
               />
             </div>
@@ -314,7 +444,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="website"
                 value={profile.website}
-                onChange={(e) => update("website", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "website",
+                    e.target.value
+                  )
+                }
                 placeholder="https://yoursite.com"
               />
 
@@ -323,7 +458,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="linkedin"
                 value={profile.linkedin}
-                onChange={(e) => update("linkedin", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "linkedin",
+                    e.target.value
+                  )
+                }
                 placeholder="https://linkedin.com/in/yourname"
               />
 
@@ -332,7 +472,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="instagram"
                 value={profile.instagram}
-                onChange={(e) => update("instagram", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "instagram",
+                    e.target.value
+                  )
+                }
                 placeholder="https://instagram.com/yourname"
               />
 
@@ -341,7 +486,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="twitter"
                 value={profile.twitter}
-                onChange={(e) => update("twitter", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "twitter",
+                    e.target.value
+                  )
+                }
                 placeholder="https://x.com/yourname"
               />
 
@@ -350,7 +500,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="facebook"
                 value={profile.facebook}
-                onChange={(e) => update("facebook", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "facebook",
+                    e.target.value
+                  )
+                }
                 placeholder="https://facebook.com/yourname"
               />
 
@@ -359,7 +514,12 @@ export default function ProfileSetupPage() {
                 type="tel"
                 name="whatsapp"
                 value={profile.whatsapp}
-                onChange={(e) => update("whatsapp", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "whatsapp",
+                    e.target.value
+                  )
+                }
                 placeholder="+234 800 000 0000"
               />
 
@@ -368,7 +528,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="linktree"
                 value={profile.linktree}
-                onChange={(e) => update("linktree", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "linktree",
+                    e.target.value
+                  )
+                }
                 placeholder="https://linktr.ee/yourname"
               />
 
@@ -377,7 +542,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="customLink1"
                 value={profile.customLink1}
-                onChange={(e) => update("customLink1", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "customLink1",
+                    e.target.value
+                  )
+                }
                 placeholder="https://"
               />
 
@@ -386,7 +556,12 @@ export default function ProfileSetupPage() {
                 type="url"
                 name="customLink2"
                 value={profile.customLink2}
-                onChange={(e) => update("customLink2", e.target.value)}
+                onChange={(e) =>
+                  update(
+                    "customLink2",
+                    e.target.value
+                  )
+                }
                 placeholder="https://"
               />
             </div>
@@ -397,7 +572,9 @@ export default function ProfileSetupPage() {
               <ImageUpload
                 label="Profile photo"
                 value={profile.profilePhoto}
-                onChange={(v) => update("profilePhoto", v)}
+                onChange={(v) =>
+                  update("profilePhoto", v)
+                }
                 maxDimension={480}
                 heightClassName="h-32"
               />
@@ -405,7 +582,9 @@ export default function ProfileSetupPage() {
               <ImageUpload
                 label="Cover image"
                 value={profile.coverImage}
-                onChange={(v) => update("coverImage", v)}
+                onChange={(v) =>
+                  update("coverImage", v)
+                }
                 maxDimension={960}
                 heightClassName="h-28"
               />
@@ -413,22 +592,34 @@ export default function ProfileSetupPage() {
               <ColorPicker
                 label="Background colour"
                 value={profile.backgroundColor}
-                onChange={(v) => update("backgroundColor", v)}
+                onChange={(v) =>
+                  update(
+                    "backgroundColor",
+                    v
+                  )
+                }
                 presets={BACKGROUND_PRESETS}
               />
 
               <p className="-mt-4 text-xs text-ink-soft/70">
-                The base background colour of your public profile page.
+                The base background colour of
+                your public profile page.
               </p>
 
               <ColorPicker
                 label="Text & symbols colour"
                 value={profile.accentColor}
-                onChange={(v) => update("accentColor", v)}
+                onChange={(v) =>
+                  update(
+                    "accentColor",
+                    v
+                  )
+                }
               />
 
               <p className="-mt-4 text-xs text-ink-soft/70">
-                Fills your buttons and icon badges on your public profile.
+                Fills your buttons and icon badges
+                on your public profile.
               </p>
             </div>
           )}
@@ -437,7 +628,12 @@ export default function ProfileSetupPage() {
             <div className="flex flex-col gap-6">
               <WorkGallery
                 images={profile.workImages}
-                onChange={(images) => update("workImages", images)}
+                onChange={(images) =>
+                  update(
+                    "workImages",
+                    images
+                  )
+                }
               />
 
               <FileUpload
@@ -445,15 +641,33 @@ export default function ProfileSetupPage() {
                 value={profile.portfolio}
                 fileName={portfolioFileName}
                 fileSize={portfolioFileSize}
-                onChange={(dataUrl, name, size) => {
-                  update("portfolio", dataUrl);
-                  setPortfolioFileName(name);
-                  setPortfolioFileSize(size);
+                onChange={(
+                  dataUrl,
+                  name,
+                  size
+                ) => {
+                  update(
+                    "portfolio",
+                    dataUrl
+                  );
+                  setPortfolioFileName(
+                    name
+                  );
+                  setPortfolioFileSize(
+                    size
+                  );
                 }}
                 onRemove={() => {
-                  update("portfolio", "");
-                  setPortfolioFileName("");
-                  setPortfolioFileSize(0);
+                  update(
+                    "portfolio",
+                    ""
+                  );
+                  setPortfolioFileName(
+                    ""
+                  );
+                  setPortfolioFileSize(
+                    0
+                  );
                 }}
               />
 
@@ -461,8 +675,15 @@ export default function ProfileSetupPage() {
                 label="Portfolio video (YouTube link)"
                 type="url"
                 name="portfolioVideo"
-                value={profile.portfolioVideo}
-                onChange={(e) => update("portfolioVideo", e.target.value)}
+                value={
+                  profile.portfolioVideo
+                }
+                onChange={(e) =>
+                  update(
+                    "portfolioVideo",
+                    e.target.value
+                  )
+                }
                 placeholder="https://youtube.com/watch?v=..."
               />
             </div>
@@ -472,7 +693,9 @@ export default function ProfileSetupPage() {
         {saveError && (
           <div className="mt-4 flex gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-700">{saveError}</p>
+            <p className="text-xs text-red-700">
+              {saveError}
+            </p>
           </div>
         )}
 
@@ -480,8 +703,11 @@ export default function ProfileSetupPage() {
           {stepIndex > 0 && (
             <button
               type="button"
-              onClick={() => setStepIndex((i) => i - 1)}
-              className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink px-2 py-3"
+              onClick={() =>
+                setStepIndex((i) => i - 1)
+              }
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink px-2 py-3 disabled:opacity-50"
             >
               <ArrowLeft className="w-4 h-4" />
               Back
@@ -491,10 +717,18 @@ export default function ProfileSetupPage() {
           <PrimaryButton
             type="button"
             onClick={persistAndAdvance}
+            disabled={saving}
             className="flex-1 flex items-center justify-center gap-2"
           >
-            {stepIndex < STEPS.length - 1 ? "Continue" : "Finish"}
-            <ArrowRight className="w-4 h-4" />
+            {saving
+              ? "Saving..."
+              : stepIndex < STEPS.length - 1
+              ? "Continue"
+              : "Finish"}
+
+            {!saving && (
+              <ArrowRight className="w-4 h-4" />
+            )}
           </PrimaryButton>
         </div>
       </div>
