@@ -25,6 +25,7 @@ import {
   getPortfolioMeta,
   type Profile,
 } from "@/lib/storage";
+import { saveProfileToCloud } from "@/lib/supabase/profiles";
 
 const STEPS = ["Basic Info", "Contact", "Links & Socials", "Visual", "Assets"];
 
@@ -74,11 +75,13 @@ export default function ProfileSetupPage() {
     });
 
     const existing = getProfile();
+
     // Merge over defaults so anyone with a profile saved before this update
     // (which lacks the newer fields) still gets sensible values for them.
     setProfile(existing ? { ...base, ...existing } : base);
 
     const portfolioMeta = getPortfolioMeta();
+
     if (portfolioMeta) {
       setPortfolioFileName(portfolioMeta.name);
       setPortfolioFileSize(portfolioMeta.size);
@@ -93,29 +96,39 @@ export default function ProfileSetupPage() {
 
   function validateBasicInfo(): boolean {
     if (!profile) return false;
+
     const next: BasicInfoErrors = {};
 
-    if (!profile.firstName.trim()) next.firstName = "First name is required.";
-    if (!profile.lastName.trim()) next.lastName = "Last name is required.";
+    if (!profile.firstName.trim()) {
+      next.firstName = "First name is required.";
+    }
+
+    if (!profile.lastName.trim()) {
+      next.lastName = "Last name is required.";
+    }
 
     setBasicErrors(next);
+
     return Object.keys(next).length === 0;
   }
 
-  function persistAndAdvance() {
+  async function persistAndAdvance() {
     if (!profile) return;
 
     if (stepIndex === 0 && !validateBasicInfo()) {
       return;
     }
 
+    // Keep the existing localStorage behaviour.
     const saved = saveProfile(profile);
+
     if (!saved) {
       setSaveError(
         "Couldn't save your changes — your images or portfolio are likely too large for this prototype's storage. Try removing the portfolio, or removing/replacing a large image, then continue."
       );
       return;
     }
+
     setSaveError(null);
 
     if (stepIndex < STEPS.length - 1) {
@@ -123,11 +136,26 @@ export default function ProfileSetupPage() {
       return;
     }
 
+    // Final step: keep the existing local data and also publish
+    // a copy to Supabase so the public profile can be viewed
+    // from another browser or device.
+    const cloudSaved = await saveProfileToCloud(profile);
+
+    if (!cloudSaved) {
+      setSaveError(
+        "Your profile was saved on this device, but we couldn't publish the public profile. Please check your internet connection and try Finish again."
+      );
+      return;
+    }
+
     saveWorkImagesCache(profile.workImages);
+
     if (profile.portfolio && portfolioFileName) {
       savePortfolioMeta(portfolioFileName, portfolioFileSize);
     }
+
     markProfileCompleted();
+
     router.push("/dashboard");
   }
 
@@ -148,7 +176,10 @@ export default function ProfileSetupPage() {
           <p className="text-sm text-ink-soft">
             Please complete sign up and choose a username first.
           </p>
-          <Link href="/signup" className="text-sm text-gold font-medium">
+          <Link
+            href="/signup"
+            className="text-sm text-gold font-medium"
+          >
             Back to sign up
           </Link>
         </div>
@@ -162,12 +193,16 @@ export default function ProfileSetupPage() {
         <span className="font-mono text-sm md:text-base font-bold tracking-[0.2em] uppercase text-gold">
           IdentiShare
         </span>
+
         <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl text-ink">
           Set up your profile
         </h1>
 
         <div className="mt-5">
-          <StepIndicator steps={STEPS} currentIndex={stepIndex} />
+          <StepIndicator
+            steps={STEPS}
+            currentIndex={stepIndex}
+          />
         </div>
 
         <div className="mt-8 flex-1">
@@ -183,6 +218,7 @@ export default function ProfileSetupPage() {
                   placeholder="Dr."
                   className="col-span-1"
                 />
+
                 <TextField
                   label="Suffix"
                   name="suffix"
@@ -202,6 +238,7 @@ export default function ProfileSetupPage() {
                 placeholder="Amara"
                 className="text-base py-4"
               />
+
               <TextField
                 label="Last name *"
                 name="lastName"
@@ -219,6 +256,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("title", e.target.value)}
                 placeholder="Creative Director"
               />
+
               <TextField
                 label="Company / organisation"
                 name="company"
@@ -226,6 +264,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("company", e.target.value)}
                 placeholder="Acme Inc."
               />
+
               <TextAreaField
                 label="Biography"
                 name="bio"
@@ -247,6 +286,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("personalEmail", e.target.value)}
                 placeholder="you@example.com"
               />
+
               <TextField
                 label="Official email"
                 type="email"
@@ -255,6 +295,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("officialEmail", e.target.value)}
                 placeholder="you@company.com"
               />
+
               <TextField
                 label="Personal phone"
                 type="tel"
@@ -263,6 +304,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("personalPhone", e.target.value)}
                 placeholder="+234 800 000 0000"
               />
+
               <TextField
                 label="Official phone"
                 type="tel"
@@ -271,6 +313,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("officialPhone", e.target.value)}
                 placeholder="+234 800 000 0001"
               />
+
               <TextField
                 label="Address"
                 name="address"
@@ -292,6 +335,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("website", e.target.value)}
                 placeholder="https://yoursite.com"
               />
+
               <TextField
                 label="LinkedIn"
                 type="url"
@@ -300,6 +344,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("linkedin", e.target.value)}
                 placeholder="https://linkedin.com/in/yourname"
               />
+
               <TextField
                 label="Instagram"
                 type="url"
@@ -308,6 +353,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("instagram", e.target.value)}
                 placeholder="https://instagram.com/yourname"
               />
+
               <TextField
                 label="Twitter / X"
                 type="url"
@@ -316,6 +362,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("twitter", e.target.value)}
                 placeholder="https://x.com/yourname"
               />
+
               <TextField
                 label="Facebook"
                 type="url"
@@ -324,6 +371,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("facebook", e.target.value)}
                 placeholder="https://facebook.com/yourname"
               />
+
               <TextField
                 label="WhatsApp number"
                 type="tel"
@@ -332,6 +380,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("whatsapp", e.target.value)}
                 placeholder="+234 800 000 0000"
               />
+
               <TextField
                 label="Linktree"
                 type="url"
@@ -340,6 +389,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("linktree", e.target.value)}
                 placeholder="https://linktr.ee/yourname"
               />
+
               <TextField
                 label="Custom link 1"
                 type="url"
@@ -348,6 +398,7 @@ export default function ProfileSetupPage() {
                 onChange={(e) => update("customLink1", e.target.value)}
                 placeholder="https://"
               />
+
               <TextField
                 label="Custom link 2"
                 type="url"
@@ -369,6 +420,7 @@ export default function ProfileSetupPage() {
                 maxDimension={480}
                 heightClassName="h-32"
               />
+
               <ImageUpload
                 label="Cover image"
                 value={profile.coverImage}
@@ -383,6 +435,7 @@ export default function ProfileSetupPage() {
                 onChange={(v) => update("backgroundColor", v)}
                 presets={BACKGROUND_PRESETS}
               />
+
               <p className="-mt-4 text-xs text-ink-soft/70">
                 The base background colour of your public profile page.
               </p>
@@ -392,6 +445,7 @@ export default function ProfileSetupPage() {
                 value={profile.accentColor}
                 onChange={(v) => update("accentColor", v)}
               />
+
               <p className="-mt-4 text-xs text-ink-soft/70">
                 Fills your buttons and icon badges on your public profile.
               </p>
@@ -453,6 +507,7 @@ export default function ProfileSetupPage() {
               Back
             </button>
           )}
+
           <PrimaryButton
             type="button"
             onClick={persistAndAdvance}
