@@ -152,13 +152,19 @@ export default function ProfileSetupPage() {
     setSaving(true);
     setSaveError(null);
 
+    const profileToSave: Profile = {
+      ...profile,
+      portfolioFileName,
+      portfolioFileSize,
+    };
+
     try {
       const response = await fetch("/api/profiles", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(profile),
+        body: JSON.stringify(profileToSave),
       });
 
       const result = await response
@@ -172,7 +178,7 @@ export default function ProfileSetupPage() {
         );
       }
 
-      saveProfile(profile);
+      saveProfile(profileToSave);
 
       if (stepIndex < STEPS.length - 1) {
         setStepIndex((i) => i + 1);

@@ -65,6 +65,8 @@ export interface Profile {
 
   workImages: string[];
   portfolio: string;
+  portfolioFileName: string;
+  portfolioFileSize: number;
   portfolioVideo: string;
 }
 
@@ -188,6 +190,8 @@ export function defaultProfile(seed: {
     coverImage: "",
     workImages: [],
     portfolio: "",
+    portfolioFileName: "",
+    portfolioFileSize: 0,
     portfolioVideo: "",
   };
 }

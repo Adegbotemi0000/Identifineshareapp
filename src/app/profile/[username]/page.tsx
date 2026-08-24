@@ -1,196 +1,218 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  type CSSProperties,
-  type ComponentType,
-} from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Phone,
-  Mail,
-  Globe,
-  MapPin,
-  FileText,
-  Share2,
-  Check,
-  Link2,
-  Contact,
-  Handshake,
-  UserPlus,
-  Download,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle } from "lucide-react";
 import { PhoneViewport } from "@/components/layout/phone-viewport";
-import { ActionButton } from "@/components/profile/action-button";
-import { ExchangeContactModal } from "@/components/profile/exchange-contact-modal";
-import { ImageLightbox } from "@/components/profile/image-lightbox";
+import { TextField } from "@/components/ui/text-field";
+import { TextAreaField } from "@/components/ui/text-area-field";
+import { PrimaryButton } from "@/components/ui/primary-button";
+import { StepIndicator } from "@/components/profile-setup/step-indicator";
+import { ImageUpload } from "@/components/profile-setup/image-upload";
+import { WorkGallery } from "@/components/profile-setup/work-gallery";
+import { FileUpload } from "@/components/profile-setup/file-upload";
+import { ColorPicker } from "@/components/profile-setup/color-picker";
 import {
-  LinkedinIcon,
-  InstagramIcon,
-  TwitterXIcon,
-  FacebookIcon,
-  WhatsAppIcon,
-} from "@/components/ui/social-icons";
-import {
+  getPendingSignup,
+  getUsername,
+  getProfile,
+  saveProfile,
+  defaultProfile,
+  markProfileCompleted,
+  saveWorkImagesCache,
+  savePortfolioMeta,
   getPortfolioMeta,
   type Profile,
 } from "@/lib/storage";
-import { downloadVCard } from "@/lib/vcard";
-import { formatFileSize } from "@/lib/image";
-import { getContrastTextColor } from "@/lib/color";
-import { getYouTubeEmbedUrl } from "@/lib/video";
-import { withProtocol } from "@/lib/url";
 
-type ThemeStyle = CSSProperties & Record<string, string>;
-
-type IconComponent = ComponentType<{
-  className?: string;
-  style?: CSSProperties;
-}>;
-
-const SOCIAL_ICONS: {
-  key: keyof Profile;
-  label: string;
-  icon: IconComponent;
-}[] = [
-  {
-    key: "linkedin",
-    label: "LinkedIn",
-    icon: LinkedinIcon,
-  },
-  {
-    key: "instagram",
-    label: "Instagram",
-    icon: InstagramIcon,
-  },
-  {
-    key: "twitter",
-    label: "Twitter / X",
-    icon: TwitterXIcon,
-  },
-  {
-    key: "facebook",
-    label: "Facebook",
-    icon: FacebookIcon,
-  },
-  {
-    key: "linktree",
-    label: "Linktree",
-    icon: Link2,
-  },
-  {
-    key: "customLink1",
-    label: "Link",
-    icon: Link2,
-  },
-  {
-    key: "customLink2",
-    label: "Link",
-    icon: Link2,
-  },
+const STEPS = [
+  "Basic Info",
+  "Contact",
+  "Links & Socials",
+  "Visual",
+  "Assets",
 ];
 
-export default function PublicProfilePage() {
-  const params = useParams<{ username: string }>();
+const BACKGROUND_PRESETS = [
+  "#fefdfb",
+  "#f6f2ea",
+  "#fdf3e7",
+  "#17150f",
+  "#101828",
+  "#1b1a17",
+];
+
+interface BasicInfoErrors {
+  firstName?: string;
+  lastName?: string;
+}
+
+export default function ProfileSetupPage() {
+  const router = useRouter();
 
   const [ready, setReady] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [portfolioMeta, setPortfolioMeta] = useState<{
-    name: string;
-    size: number;
-  } | null>(null);
+  const [basicErrors, setBasicErrors] =
+    useState<BasicInfoErrors>({});
+  const [saveError, setSaveError] = useState<string | null>(
+    null
+  );
+  const [saving, setSaving] = useState(false);
 
-  const [shareCopied, setShareCopied] = useState(false);
-  const [exchangeOpen, setExchangeOpen] = useState(false);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [portfolioFileName, setPortfolioFileName] =
+    useState("");
+  const [portfolioFileSize, setPortfolioFileSize] =
+    useState(0);
 
   useEffect(() => {
-    const username = params.username?.toLowerCase();
+    const pending = getPendingSignup();
+    const username = getUsername();
 
-    if (!username) {
+    if (!pending || !pending.verified || !username) {
+      setBlocked(true);
       setReady(true);
       return;
     }
 
-    let cancelled = false;
+    const base = defaultProfile({
+      accountType: pending.accountType,
+      username,
+      fullName: pending.fullName,
+      companyName: pending.companyName,
+      email: pending.email,
+      phone: pending.phone,
+    });
 
-    async function loadProfile() {
-      try {
-        const response = await fetch(
-          `/api/profiles?username=${encodeURIComponent(username)}`,
-          { cache: "no-store" }
-        );
+    const existing = getProfile();
 
-        if (!response.ok) {
-          if (!cancelled) setReady(true);
-          return;
-        }
+    setProfile(
+      existing
+        ? {
+            ...base,
+            ...existing,
+          }
+        : base
+    );
 
-        const data = await response.json();
+    const portfolioMeta = getPortfolioMeta();
 
-        if (cancelled) return;
-
-        if (data?.profile) {
-          setProfile(data.profile);
-          setPortfolioMeta(getPortfolioMeta());
-        }
-      } catch (error) {
-        console.error("Failed to load profile:", error);
-      } finally {
-        if (!cancelled) setReady(true);
-      }
+    if (portfolioMeta) {
+      setPortfolioFileName(portfolioMeta.name);
+      setPortfolioFileSize(portfolioMeta.size);
     }
 
-    loadProfile();
+    setReady(true);
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [params.username]);
+  function update<K extends keyof Profile>(
+    key: K,
+    value: Profile[K]
+  ) {
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            [key]: value,
+          }
+        : prev
+    );
+  }
 
-  async function handleShare() {
-    if (!profile) return;
+  function validateBasicInfo(): boolean {
+    if (!profile) return false;
 
-    const url =
-      typeof window !== "undefined"
-        ? window.location.href
-        : `https://identishareapp.vercel.app/profile/${profile.username}`;
+    const next: BasicInfoErrors = {};
 
-    const fullName = [
-      profile.firstName,
-      profile.lastName,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    if (!profile.firstName.trim()) {
+      next.firstName = "First name is required.";
+    }
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: fullName || profile.username,
-          text: `Check out ${
-            fullName || profile.username
-          }'s IdentiShare profile`,
-          url,
-        });
-      } catch {
-        // User cancelled the share sheet.
-      }
+    if (!profile.lastName.trim()) {
+      next.lastName = "Last name is required.";
+    }
 
+    setBasicErrors(next);
+
+    return Object.keys(next).length === 0;
+  }
+
+  async function persistAndAdvance() {
+    if (!profile || saving) return;
+
+    if (
+      stepIndex === 0 &&
+      !validateBasicInfo()
+    ) {
       return;
     }
 
+    setSaving(true);
+    setSaveError(null);
+
+    const profileToSave: Profile = {
+      ...profile,
+      portfolioFileName,
+      portfolioFileSize,
+    };
+
     try {
-      await navigator.clipboard.writeText(url);
+      const response = await fetch("/api/profiles", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profileToSave),
+      });
 
-      setShareCopied(true);
+      const result = await response
+        .json()
+        .catch(() => null);
 
-      setTimeout(() => {
-        setShareCopied(false);
-      }, 2000);
-    } catch {
-      // Clipboard unavailable.
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            "Failed to save profile."
+        );
+      }
+
+      saveProfile(profileToSave);
+
+      if (stepIndex < STEPS.length - 1) {
+        setStepIndex((i) => i + 1);
+        return;
+      }
+
+      saveWorkImagesCache(profile.workImages);
+
+      if (
+        profile.portfolio &&
+        portfolioFileName
+      ) {
+        savePortfolioMeta(
+          portfolioFileName,
+          portfolioFileSize
+        );
+      }
+
+      markProfileCompleted();
+
+      router.push(
+        `/profile/${profile.username}`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save profile:",
+        error
+      );
+
+      setSaveError(
+        "Couldn't save your profile. Please try again."
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -206,455 +228,516 @@ export default function PublicProfilePage() {
     );
   }
 
-  if (!profile) {
+  if (blocked || !profile) {
     return (
       <PhoneViewport>
         <div className="px-8 py-10 h-full flex flex-col items-center justify-center text-center gap-4">
           <p className="text-sm text-ink-soft">
-            This profile isn&apos;t available. It may not exist,
-            or there was a problem loading it.
+            Please complete sign up and choose a
+            username first.
           </p>
 
           <Link
-            href="/"
+            href="/signup"
             className="text-sm text-gold font-medium"
           >
-            Back to IdentiShare
+            Back to sign up
           </Link>
         </div>
       </PhoneViewport>
     );
   }
 
-  const fullName = [
-    profile.prefix,
-    profile.firstName,
-    profile.lastName,
-    profile.suffix,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const initials =
-    `${profile.firstName?.[0] ?? ""}${
-      profile.lastName?.[0] ?? ""
-    }`.toUpperCase() || "?";
-
-  const phoneActions = [
-    {
-      label: "Personal phone",
-      value: profile.personalPhone,
-    },
-    {
-      label: "Official phone",
-      value: profile.officialPhone,
-    },
-  ].filter((p) => p.value);
-
-  const emailActions = [
-    {
-      label: "Personal email",
-      value: profile.personalEmail,
-    },
-    {
-      label: "Official email",
-      value: profile.officialEmail,
-    },
-  ].filter((e) => e.value);
-
-  const filledSocials = SOCIAL_ICONS.filter((s) =>
-    Boolean(profile[s.key])
-  );
-
-  const ownerEmail =
-    profile.officialEmail || profile.personalEmail;
-
-  const backgroundColor =
-    profile.backgroundColor || "#fefdfb";
-
-  const accentColor =
-    profile.accentColor || "#ad8a3f";
-
-  const pageTextColor =
-    getContrastTextColor(backgroundColor);
-
-  const accentForeground =
-    getContrastTextColor(accentColor);
-
-  const videoEmbedUrl = profile.portfolioVideo
-    ? getYouTubeEmbedUrl(profile.portfolioVideo)
-    : null;
-
-  const themeStyle: ThemeStyle = {
-    "--color-paper": backgroundColor,
-    "--color-ink": pageTextColor,
-    "--color-ink-soft":
-      pageTextColor === "#ffffff"
-        ? "rgba(255,255,255,0.72)"
-        : "rgba(23,21,15,0.65)",
-    "--color-ivory": `color-mix(in srgb, ${backgroundColor} 90%, ${pageTextColor} 10%)`,
-    "--color-gold-line": `color-mix(in srgb, ${pageTextColor} 18%, transparent)`,
-    "--color-gold": accentColor,
-    "--color-gold-soft": accentColor,
-  };
-
   return (
-    <div style={themeStyle}>
-      <PhoneViewport>
-        <div className="min-h-full relative flex flex-col pb-10">
-          <div className="relative h-48 overflow-hidden bg-gradient-to-br from-ivory to-gold-soft/40">
-            {profile.coverImage && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.coverImage}
-                alt="Cover"
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            )}
+    <PhoneViewport>
+      <div className="px-8 py-10 min-h-full flex flex-col">
+        <span className="font-mono text-sm md:text-base font-bold tracking-[0.2em] uppercase text-gold">
+          IdentiShare
+        </span>
 
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-gold to-transparent" />
+        <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl text-ink">
+          Set up your profile
+        </h1>
 
-            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-paper to-transparent" />
-          </div>
-
-          <div className="relative z-10 px-6 -mt-14 text-center">
-            <div
-              className="mx-auto w-28 h-28 rounded-full border-4 border-paper overflow-hidden flex items-center justify-center font-[family-name:var(--font-display)] text-3xl shadow-lg"
-              style={
-                profile.profilePhoto
-                  ? undefined
-                  : {
-                      backgroundColor: accentColor,
-                      color: accentForeground,
-                    }
-              }
-            >
-              {profile.profilePhoto ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={profile.profilePhoto}
-                  alt={
-                    fullName || "Profile photo"
-                  }
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                initials
-              )}
-            </div>
-
-            <h1 className="mt-3 font-[family-name:var(--font-display)] text-2xl text-ink">
-              {fullName || profile.username}
-            </h1>
-
-            {profile.title && (
-              <p className="text-sm text-ink-soft">
-                {profile.title}
-              </p>
-            )}
-
-            {profile.company && (
-              <p className="text-xs text-ink-soft/80">
-                {profile.company}
-              </p>
-            )}
-
-            {profile.bio && (
-              <p className="mt-4 text-sm text-ink-soft leading-relaxed">
-                {profile.bio}
-              </p>
-            )}
-
-            <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  downloadVCard(profile)
-                }
-                className="flex-1 flex items-center justify-center gap-2 rounded-full py-3.5 text-sm font-medium transition-opacity hover:opacity-90"
-                style={{
-                  backgroundColor: accentColor,
-                  color: accentForeground,
-                }}
-              >
-                <Contact className="w-4 h-4" />
-                Save Contact
-              </button>
-
-              <button
-                type="button"
-                onClick={handleShare}
-                aria-label="Share profile"
-                className="w-[52px] shrink-0 flex items-center justify-center rounded-full border hover:opacity-80 transition-opacity"
-                style={{
-                  borderColor: accentColor,
-                  color: pageTextColor,
-                }}
-              >
-                {shareCopied ? (
-                  <Check className="w-4 h-4" />
-                ) : (
-                  <Share2 className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-
-            {(phoneActions.length > 0 ||
-              emailActions.length > 0 ||
-              profile.whatsapp ||
-              profile.website ||
-              profile.address) && (
-              <div className="mt-6 grid grid-cols-3 gap-2 text-left">
-                {phoneActions.map((p) => (
-                  <ActionButton
-                    key={p.label}
-                    icon={Phone}
-                    label={p.label}
-                    href={`tel:${p.value}`}
-                    accentColor={accentColor}
-                  />
-                ))}
-
-                {emailActions.map((e) => (
-                  <ActionButton
-                    key={e.label}
-                    icon={Mail}
-                    label={e.label}
-                    href={`mailto:${e.value}`}
-                    accentColor={accentColor}
-                  />
-                ))}
-
-                {profile.whatsapp && (
-                  <ActionButton
-                    icon={WhatsAppIcon}
-                    label="WhatsApp"
-                    href={`https://wa.me/${profile.whatsapp.replace(
-                      /\D/g,
-                      ""
-                    )}`}
-                    external
-                    accentColor={accentColor}
-                  />
-                )}
-
-                {profile.website && (
-                  <ActionButton
-                    icon={Globe}
-                    label="Website"
-                    href={withProtocol(
-                      profile.website
-                    )}
-                    external
-                    accentColor={accentColor}
-                  />
-                )}
-
-                {profile.address && (
-                  <ActionButton
-                    icon={MapPin}
-                    label="Address"
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      profile.address
-                    )}`}
-                    external
-                    accentColor={accentColor}
-                  />
-                )}
-              </div>
-            )}
-
-            {filledSocials.length > 0 && (
-              <div className="mt-7 flex items-center justify-center flex-wrap gap-3">
-                {filledSocials.map((s) => (
-                  <a
-                    key={s.key}
-                    href={withProtocol(
-                      profile[s.key] as string
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={s.label}
-                    className="w-12 h-12 rounded-full flex items-center justify-center hover:opacity-90 transition-opacity"
-                    style={{
-                      backgroundColor: accentColor,
-                    }}
-                  >
-                    <s.icon
-                      className="w-5 h-5"
-                      style={{
-                        color: accentForeground,
-                      }}
-                    />
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {profile.workImages.length > 0 && (
-              <div className="mt-8 text-left">
-                <h2 className="text-xs font-medium text-ink-soft uppercase tracking-wide mb-2">
-                  Images
-                </h2>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {profile.workImages.map(
-                    (src, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() =>
-                          setLightboxIndex(i)
-                        }
-                        className="block aspect-square rounded-lg overflow-hidden border border-gold-line hover:opacity-90 transition-opacity"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`Image ${i + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {videoEmbedUrl && (
-              <div className="mt-8 text-left">
-                <h2 className="text-xs font-medium text-ink-soft uppercase tracking-wide mb-2">
-                  Video
-                </h2>
-
-                <div className="aspect-video rounded-xl overflow-hidden border border-gold-line">
-                  <iframe
-                    src={videoEmbedUrl}
-                    title="Portfolio video"
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-              </div>
-            )}
-
-            {profile.portfolio &&
-              portfolioMeta && (
-                <div className="mt-8 text-left">
-                  <h2 className="text-xs font-medium text-ink-soft uppercase tracking-wide mb-2">
-                    Portfolio
-                  </h2>
-
-                  <div className="flex items-center gap-2.5 rounded-xl border border-gold-line bg-paper px-4 py-3">
-                    <FileText className="w-4 h-4 text-gold shrink-0" />
-
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-ink truncate">
-                        {portfolioMeta.name}
-                      </p>
-
-                      <p className="text-xs text-ink-soft">
-                        {formatFileSize(
-                          portfolioMeta.size
-                        )}
-                      </p>
-                    </div>
-
-                    <a
-                      href={profile.portfolio}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-gold font-medium shrink-0"
-                    >
-                      Preview
-                    </a>
-
-                    <a
-                      href={profile.portfolio}
-                      download={
-                        portfolioMeta.name
-                      }
-                      aria-label="Download portfolio"
-                      className="text-ink-soft shrink-0"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-                  </div>
-                </div>
-              )}
-
-            {ownerEmail && (
-              <div className="mt-8">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExchangeOpen(true)
-                  }
-                  className="w-full flex items-center justify-center gap-2 rounded-full py-3.5 text-sm font-medium transition-opacity hover:opacity-90"
-                  style={{
-                    backgroundColor: accentColor,
-                    color: accentForeground,
-                  }}
-                >
-                  <Handshake className="w-4 h-4" />
-                  Exchange Contact
-                </button>
-              </div>
-            )}
-
-            <div className="mt-8 rounded-2xl border border-gold-line bg-ivory px-5 py-6 text-center">
-              <p className="text-xs text-ink-soft">
-                Like what you see?
-              </p>
-
-              <h3 className="mt-1 font-[family-name:var(--font-display)] text-lg text-ink">
-                Create your own IdentiShare profile
-              </h3>
-
-              <Link
-                href="/"
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-ink text-paper px-6 py-3 text-sm font-medium hover:bg-ink/90 transition-colors"
-              >
-                <UserPlus className="w-4 h-4" />
-                Get started free
-              </Link>
-            </div>
-          </div>
+        <div className="mt-5">
+          <StepIndicator
+            steps={STEPS}
+            currentIndex={stepIndex}
+          />
         </div>
-      </PhoneViewport>
 
-      {ownerEmail && (
-        <ExchangeContactModal
-          open={exchangeOpen}
-          onClose={() =>
-            setExchangeOpen(false)
-          }
-          ownerName={
-            fullName || profile.username
-          }
-          ownerEmail={ownerEmail}
-        />
-      )}
+        <div className="mt-8 flex-1">
+          {stepIndex === 0 && (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-3 gap-3">
+                <TextField
+                  label="Prefix"
+                  name="prefix"
+                  value={profile.prefix}
+                  onChange={(e) =>
+                    update(
+                      "prefix",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Dr."
+                  className="col-span-1"
+                />
 
-      <ImageLightbox
-        src={
-          lightboxIndex !== null
-            ? profile.workImages[
-                lightboxIndex
-              ]
-            : null
-        }
-        alt={`Image ${
-          (lightboxIndex ?? 0) + 1
-        }`}
-        downloadName={`${profile.username}-image-${
-          (lightboxIndex ?? 0) + 1
-        }.jpg`}
-        onClose={() =>
-          setLightboxIndex(null)
-        }
-      />
-    </div>
+                <TextField
+                  label="Suffix"
+                  name="suffix"
+                  value={profile.suffix}
+                  onChange={(e) =>
+                    update(
+                      "suffix",
+                      e.target.value
+                    )
+                  }
+                  placeholder="MBA"
+                  className="col-span-2"
+                />
+              </div>
+
+              <TextField
+                label="First name *"
+                name="firstName"
+                value={profile.firstName}
+                onChange={(e) =>
+                  update(
+                    "firstName",
+                    e.target.value
+                  )
+                }
+                error={basicErrors.firstName}
+                placeholder="Amara"
+                className="text-base py-4"
+              />
+
+              <TextField
+                label="Last name *"
+                name="lastName"
+                value={profile.lastName}
+                onChange={(e) =>
+                  update(
+                    "lastName",
+                    e.target.value
+                  )
+                }
+                error={basicErrors.lastName}
+                placeholder="Kofi"
+                className="text-base py-4"
+              />
+
+              <TextField
+                label="Professional title"
+                name="title"
+                value={profile.title}
+                onChange={(e) =>
+                  update(
+                    "title",
+                    e.target.value
+                  )
+                }
+                placeholder="Creative Director"
+              />
+
+              <TextField
+                label="Company / organisation"
+                name="company"
+                value={profile.company}
+                onChange={(e) =>
+                  update(
+                    "company",
+                    e.target.value
+                  )
+                }
+                placeholder="Acme Inc."
+              />
+
+              <TextAreaField
+                label="Biography"
+                name="bio"
+                value={profile.bio}
+                onChange={(e) =>
+                  update(
+                    "bio",
+                    e.target.value
+                  )
+                }
+                placeholder="A short introduction visitors will see on your public profile."
+              />
+            </div>
+          )}
+
+          {stepIndex === 1 && (
+            <div className="flex flex-col gap-4">
+              <TextField
+                label="Personal email"
+                type="email"
+                name="personalEmail"
+                value={profile.personalEmail}
+                onChange={(e) =>
+                  update(
+                    "personalEmail",
+                    e.target.value
+                  )
+                }
+                placeholder="you@example.com"
+              />
+
+              <TextField
+                label="Official email"
+                type="email"
+                name="officialEmail"
+                value={profile.officialEmail}
+                onChange={(e) =>
+                  update(
+                    "officialEmail",
+                    e.target.value
+                  )
+                }
+                placeholder="you@company.com"
+              />
+
+              <TextField
+                label="Personal phone"
+                type="tel"
+                name="personalPhone"
+                value={profile.personalPhone}
+                onChange={(e) =>
+                  update(
+                    "personalPhone",
+                    e.target.value
+                  )
+                }
+                placeholder="+234 800 000 0000"
+              />
+
+              <TextField
+                label="Official phone"
+                type="tel"
+                name="officialPhone"
+                value={profile.officialPhone}
+                onChange={(e) =>
+                  update(
+                    "officialPhone",
+                    e.target.value
+                  )
+                }
+                placeholder="+234 800 000 0001"
+              />
+
+              <TextField
+                label="Address"
+                name="address"
+                value={profile.address}
+                onChange={(e) =>
+                  update(
+                    "address",
+                    e.target.value
+                  )
+                }
+                placeholder="City, Country"
+              />
+            </div>
+          )}
+
+          {stepIndex === 2 && (
+            <div className="flex flex-col gap-4">
+              <TextField
+                label="Website"
+                type="url"
+                name="website"
+                value={profile.website}
+                onChange={(e) =>
+                  update(
+                    "website",
+                    e.target.value
+                  )
+                }
+                placeholder="https://yoursite.com"
+              />
+
+              <TextField
+                label="LinkedIn"
+                type="url"
+                name="linkedin"
+                value={profile.linkedin}
+                onChange={(e) =>
+                  update(
+                    "linkedin",
+                    e.target.value
+                  )
+                }
+                placeholder="https://linkedin.com/in/yourname"
+              />
+
+              <TextField
+                label="Instagram"
+                type="url"
+                name="instagram"
+                value={profile.instagram}
+                onChange={(e) =>
+                  update(
+                    "instagram",
+                    e.target.value
+                  )
+                }
+                placeholder="https://instagram.com/yourname"
+              />
+
+              <TextField
+                label="Twitter / X"
+                type="url"
+                name="twitter"
+                value={profile.twitter}
+                onChange={(e) =>
+                  update(
+                    "twitter",
+                    e.target.value
+                  )
+                }
+                placeholder="https://x.com/yourname"
+              />
+
+              <TextField
+                label="Facebook"
+                type="url"
+                name="facebook"
+                value={profile.facebook}
+                onChange={(e) =>
+                  update(
+                    "facebook",
+                    e.target.value
+                  )
+                }
+                placeholder="https://facebook.com/yourname"
+              />
+
+              <TextField
+                label="WhatsApp number"
+                type="tel"
+                name="whatsapp"
+                value={profile.whatsapp}
+                onChange={(e) =>
+                  update(
+                    "whatsapp",
+                    e.target.value
+                  )
+                }
+                placeholder="+234 800 000 0000"
+              />
+
+              <TextField
+                label="Linktree"
+                type="url"
+                name="linktree"
+                value={profile.linktree}
+                onChange={(e) =>
+                  update(
+                    "linktree",
+                    e.target.value
+                  )
+                }
+                placeholder="https://linktr.ee/yourname"
+              />
+
+              <TextField
+                label="Custom link 1"
+                type="url"
+                name="customLink1"
+                value={profile.customLink1}
+                onChange={(e) =>
+                  update(
+                    "customLink1",
+                    e.target.value
+                  )
+                }
+                placeholder="https://"
+              />
+
+              <TextField
+                label="Custom link 2"
+                type="url"
+                name="customLink2"
+                value={profile.customLink2}
+                onChange={(e) =>
+                  update(
+                    "customLink2",
+                    e.target.value
+                  )
+                }
+                placeholder="https://"
+              />
+            </div>
+          )}
+
+          {stepIndex === 3 && (
+            <div className="flex flex-col gap-6">
+              <ImageUpload
+                label="Profile photo"
+                value={profile.profilePhoto}
+                onChange={(v) =>
+                  update("profilePhoto", v)
+                }
+                maxDimension={480}
+                heightClassName="h-32"
+              />
+
+              <ImageUpload
+                label="Cover image"
+                value={profile.coverImage}
+                onChange={(v) =>
+                  update("coverImage", v)
+                }
+                maxDimension={960}
+                heightClassName="h-28"
+              />
+
+              <ColorPicker
+                label="Background colour"
+                value={profile.backgroundColor}
+                onChange={(v) =>
+                  update(
+                    "backgroundColor",
+                    v
+                  )
+                }
+                presets={BACKGROUND_PRESETS}
+              />
+
+              <p className="-mt-4 text-xs text-ink-soft/70">
+                The base background colour of
+                your public profile page.
+              </p>
+
+              <ColorPicker
+                label="Text & symbols colour"
+                value={profile.accentColor}
+                onChange={(v) =>
+                  update(
+                    "accentColor",
+                    v
+                  )
+                }
+              />
+
+              <p className="-mt-4 text-xs text-ink-soft/70">
+                Fills your buttons and icon badges
+                on your public profile.
+              </p>
+            </div>
+          )}
+
+          {stepIndex === 4 && (
+            <div className="flex flex-col gap-6">
+              <WorkGallery
+                images={profile.workImages}
+                onChange={(images) =>
+                  update(
+                    "workImages",
+                    images
+                  )
+                }
+              />
+
+              <FileUpload
+                label="Portfolio / CV (PDF)"
+                value={profile.portfolio}
+                fileName={portfolioFileName}
+                fileSize={portfolioFileSize}
+                onChange={(
+                  dataUrl,
+                  name,
+                  size
+                ) => {
+                  update(
+                    "portfolio",
+                    dataUrl
+                  );
+                  setPortfolioFileName(
+                    name
+                  );
+                  setPortfolioFileSize(
+                    size
+                  );
+                }}
+                onRemove={() => {
+                  update(
+                    "portfolio",
+                    ""
+                  );
+                  setPortfolioFileName(
+                    ""
+                  );
+                  setPortfolioFileSize(
+                    0
+                  );
+                }}
+              />
+
+              <TextField
+                label="Portfolio video (YouTube link)"
+                type="url"
+                name="portfolioVideo"
+                value={
+                  profile.portfolioVideo
+                }
+                onChange={(e) =>
+                  update(
+                    "portfolioVideo",
+                    e.target.value
+                  )
+                }
+                placeholder="https://youtube.com/watch?v=..."
+              />
+            </div>
+          )}
+        </div>
+
+        {saveError && (
+          <div className="mt-4 flex gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700">
+              {saveError}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center gap-3">
+          {stepIndex > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setStepIndex((i) => i - 1)
+              }
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink px-2 py-3 disabled:opacity-50"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+          )}
+
+          <PrimaryButton
+            type="button"
+            onClick={persistAndAdvance}
+            disabled={saving}
+            className="flex-1 flex items-center justify-center gap-2"
+          >
+            {saving
+              ? "Saving..."
+              : stepIndex < STEPS.length - 1
+              ? "Continue"
+              : "Finish"}
+
+            {!saving && (
+              <ArrowRight className="w-4 h-4" />
+            )}
+          </PrimaryButton>
+        </div>
+      </div>
+    </PhoneViewport>
   );
 }
