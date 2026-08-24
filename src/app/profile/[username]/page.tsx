@@ -38,7 +38,6 @@ import {
   getPortfolioMeta,
   type Profile,
 } from "@/lib/storage";
-import { getProfileFromCloud } from "@/lib/supabase/profiles";
 import { downloadVCard } from "@/lib/vcard";
 import { formatFileSize } from "@/lib/image";
 import { getContrastTextColor } from "@/lib/color";
@@ -109,50 +108,33 @@ export default function PublicProfilePage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    async function loadProfile() {
-      const username = params.username?.toLowerCase();
+    const username = params.username?.toLowerCase();
 
-      if (!username) {
-        setReady(true);
-        return;
-      }
-
-      // First check localStorage.
-      // This preserves the existing prototype behaviour.
-      const stored = getProfile();
-
-      if (
-        stored &&
-        stored.username.toLowerCase() === username
-      ) {
-        setProfile(stored);
-        setPortfolioMeta(getPortfolioMeta());
-        setReady(true);
-        return;
-      }
-
-      // If this browser doesn't have the profile locally,
-      // retrieve it from Supabase.
-      const cloudProfile = await getProfileFromCloud(username);
-
-      if (cloudProfile) {
-        setProfile(cloudProfile);
-
-        // Portfolio metadata is still local in the prototype.
-        // We only use it when available.
-        setPortfolioMeta(getPortfolioMeta());
-      }
-
+    if (!username) {
       setReady(true);
+      return;
     }
 
-    loadProfile();
+    const stored = getProfile();
+
+    if (
+      stored &&
+      stored.username.toLowerCase() === username
+    ) {
+      setProfile(stored);
+      setPortfolioMeta(getPortfolioMeta());
+    }
+
+    setReady(true);
   }, [params.username]);
 
   async function handleShare() {
     if (!profile) return;
 
-    const url = `https://identishare.com/${profile.username}`;
+    const url =
+      typeof window !== "undefined"
+        ? window.location.href
+        : `https://identishareapp.vercel.app/profile/${profile.username}`;
 
     const fullName = [
       profile.firstName,
@@ -299,7 +281,6 @@ export default function PublicProfilePage() {
     <div style={themeStyle}>
       <PhoneViewport>
         <div className="min-h-full relative flex flex-col pb-10">
-          {/* Cover */}
           <div className="relative h-48 overflow-hidden bg-gradient-to-br from-ivory to-gold-soft/40">
             {profile.coverImage && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -363,7 +344,6 @@ export default function PublicProfilePage() {
               </p>
             )}
 
-            {/* Primary CTA */}
             <div className="mt-5 flex gap-3">
               <button
                 type="button"
@@ -398,7 +378,6 @@ export default function PublicProfilePage() {
               </button>
             </div>
 
-            {/* Contact actions */}
             {(phoneActions.length > 0 ||
               emailActions.length > 0 ||
               profile.whatsapp ||
@@ -464,7 +443,6 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Social links */}
             {filledSocials.length > 0 && (
               <div className="mt-7 flex items-center justify-center flex-wrap gap-3">
                 {filledSocials.map((s) => (
@@ -492,7 +470,6 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Images */}
             {profile.workImages.length > 0 && (
               <div className="mt-8 text-left">
                 <h2 className="text-xs font-medium text-ink-soft uppercase tracking-wide mb-2">
@@ -523,7 +500,6 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Video */}
             {videoEmbedUrl && (
               <div className="mt-8 text-left">
                 <h2 className="text-xs font-medium text-ink-soft uppercase tracking-wide mb-2">
@@ -542,7 +518,6 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Portfolio */}
             {profile.portfolio &&
               portfolioMeta && (
                 <div className="mt-8 text-left">
@@ -588,7 +563,6 @@ export default function PublicProfilePage() {
                 </div>
               )}
 
-            {/* Exchange contact */}
             {ownerEmail && (
               <div className="mt-8">
                 <button
@@ -608,7 +582,6 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Create your own profile CTA */}
             <div className="mt-8 rounded-2xl border border-gold-line bg-ivory px-5 py-6 text-center">
               <p className="text-xs text-ink-soft">
                 Like what you see?

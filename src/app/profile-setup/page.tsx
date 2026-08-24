@@ -25,7 +25,6 @@ import {
   getPortfolioMeta,
   type Profile,
 } from "@/lib/storage";
-import { saveProfileToCloud } from "@/lib/supabase/profiles";
 
 const STEPS = ["Basic Info", "Contact", "Links & Socials", "Visual", "Assets"];
 
@@ -76,8 +75,6 @@ export default function ProfileSetupPage() {
 
     const existing = getProfile();
 
-    // Merge over defaults so anyone with a profile saved before this update
-    // (which lacks the newer fields) still gets sensible values for them.
     setProfile(existing ? { ...base, ...existing } : base);
 
     const portfolioMeta = getPortfolioMeta();
@@ -112,14 +109,13 @@ export default function ProfileSetupPage() {
     return Object.keys(next).length === 0;
   }
 
-  async function persistAndAdvance() {
+  function persistAndAdvance() {
     if (!profile) return;
 
     if (stepIndex === 0 && !validateBasicInfo()) {
       return;
     }
 
-    // Keep the existing localStorage behaviour.
     const saved = saveProfile(profile);
 
     if (!saved) {
@@ -133,18 +129,6 @@ export default function ProfileSetupPage() {
 
     if (stepIndex < STEPS.length - 1) {
       setStepIndex((i) => i + 1);
-      return;
-    }
-
-    // Final step: keep the existing local data and also publish
-    // a copy to Supabase so the public profile can be viewed
-    // from another browser or device.
-    const cloudSaved = await saveProfileToCloud(profile);
-
-    if (!cloudSaved) {
-      setSaveError(
-        "Your profile was saved on this device, but we couldn't publish the public profile. Please check your internet connection and try Finish again."
-      );
       return;
     }
 
@@ -176,6 +160,7 @@ export default function ProfileSetupPage() {
           <p className="text-sm text-ink-soft">
             Please complete sign up and choose a username first.
           </p>
+
           <Link
             href="/signup"
             className="text-sm text-gold font-medium"
@@ -206,7 +191,6 @@ export default function ProfileSetupPage() {
         </div>
 
         <div className="mt-8 flex-1">
-          {/* Step 0 — Basic Info */}
           {stepIndex === 0 && (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-3">
@@ -275,7 +259,6 @@ export default function ProfileSetupPage() {
             </div>
           )}
 
-          {/* Step 1 — Contact Details */}
           {stepIndex === 1 && (
             <div className="flex flex-col gap-4">
               <TextField
@@ -324,7 +307,6 @@ export default function ProfileSetupPage() {
             </div>
           )}
 
-          {/* Step 2 — Links and Socials */}
           {stepIndex === 2 && (
             <div className="flex flex-col gap-4">
               <TextField
@@ -410,7 +392,6 @@ export default function ProfileSetupPage() {
             </div>
           )}
 
-          {/* Step 3 — Visual Identity */}
           {stepIndex === 3 && (
             <div className="flex flex-col gap-6">
               <ImageUpload
@@ -452,7 +433,6 @@ export default function ProfileSetupPage() {
             </div>
           )}
 
-          {/* Step 4 — Professional Assets */}
           {stepIndex === 4 && (
             <div className="flex flex-col gap-6">
               <WorkGallery
